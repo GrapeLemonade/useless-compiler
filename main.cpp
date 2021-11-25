@@ -792,7 +792,7 @@ namespace Gen {
 			return {Stk, id};
 		} else {
 			const Value &v = GenUnaryExp(g->sub[1], loc, s, ctx);
-			TokenType op = get<1>(((GLexeme *) g->sub[0])->t);
+			TokenType op = get<1>(((GLexeme *) g->sub[0]->sub[0])->t);
 			if (op != PLUS) {
 				int id = newVar(), offset = s.alloc(4);
 				valueTypeMap[id] = Stk;
@@ -1015,7 +1015,7 @@ namespace Gen {
 		if (g->sub[0]->_type == PrimaryExp) return EvalPrimaryExp((GPrimaryExp *) g->sub[0], loc, s, ctx);
 		else {
 			int r = EvalUnaryExp((GUnaryExp *) g->sub[1], loc, s, ctx);
-			return get<1>(((GLexeme *) g->sub[0])->t) == PLUS ? r : -r;
+			return get<1>(((GLexeme *) g->sub[0]->sub[0])->t) == PLUS ? r : -r;
 		}
 	}
 
