@@ -657,7 +657,7 @@ namespace Gen {
 			} else {
 				Value exp = GenExp(g->sub[2], loc, s, ctx);
 				program.emplace_back(loadValue(lv, "$t0"));
-				program.emplace_back(loadValue(exp, "$t1"));
+				loadLVal(exp, "$t1");
 				program.emplace_back("sw $t1, ($t0)");
 			}
 		} else if (g->sub[0]->_type == Exp) {
