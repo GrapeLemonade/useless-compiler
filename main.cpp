@@ -370,18 +370,22 @@ namespace Gen {
 			if (dimCount == 2) {
 				for (auto gg : g->sub) {
 					int i = 0;
-					if (gg->_type == InitVal) for (auto ggg : gg->sub) { // aa
+					if (gg->_type == InitVal) for (auto ggg : gg->sub) {
+						if (ggg->_type == InitVal) { // a
 							int j = 0;
-							if (ggg->_type == InitVal) for (auto g4 : ggg->sub) { // a
-									if (g4->_type == InitVal) for (auto g5 : g4->sub) { // i
-											Value vv = GenExp((GExp *) g5, loc, s, ctx);
-											loadLVal(vv, "$t0");
-											program.push_back(storeOnStack(offset + 4 * (i * dim2 + j), "$t0"));
-											++j;
-										}
-									++i;
+							for (auto g4 : ggg->sub) {
+								if (g4->_type == InitVal) {
+									for (auto g5 : g4->sub) { // i
+										Value vv = GenExp((GExp *) g5, loc, s, ctx);
+										loadLVal(vv, "$t0");
+										program.push_back(storeOnStack(offset + 4 * (i * dim2 + j), "$t0"));
+									}
+									++j;
 								}
+							}
+							++i;
 						}
+					}
 				}
 			} else if (dimCount == 1) {
 				for (auto gg : g->sub) {
@@ -419,18 +423,24 @@ namespace Gen {
 				data.push_back("g_" + to_string(id) + ":");
 				if (dimCount == 2) {
 					for (auto gg : g->sub) {
-						int i = 0;
-						if (gg->_type == InitVal) for (auto ggg : gg->sub) { // aa
-								int j = 0;
-								if (ggg->_type == InitVal) for (auto g4 : ggg->sub) { // a
-										if (g4->_type == InitVal) for (auto g5 : g4->sub) { // i
+						if (gg->_type == InitVal) {
+							int i = 0;
+							for (auto ggg : gg->sub) { // aa
+								if (ggg->_type == InitVal) {
+									int j = 0;
+									for (auto g4 : ggg->sub) { // a
+										if (g4->_type == InitVal) {
+											for (auto g5 : g4->sub) { // i
 												ConstExpr vv = EvalExp((GExp *) g5, loc, s, ctx);
 												data.push_back(".word " + to_string(vv));
-												++j;
 											}
-										++i;
+											++j;
+										}
 									}
+									++i;
+								}
 							}
+						}
 					}
 				} else if (dimCount == 1) {
 					for (auto gg : g->sub) {
