@@ -30,11 +30,11 @@ namespace GenDefine {
 		Normal, Const
 	};
 
-	struct Variable {
+	struct Variable { // NOLINT(cppcoreguidelines-pro-type-member-init)
 		Type type;
 		CV cv;
 		string name;
-		int id, dim1, dim2; // not now = =
+		int id, dim1, dim2;
 		bool operator < (const Variable &o) const { return name < o.name; }
 	};
 
@@ -57,7 +57,7 @@ namespace GenDefine {
 		int id;
 	};
 
-	struct Storage {
+	struct Storage { // NOLINT(cppcoreguidelines-pro-type-member-init)
 		int val;
 		vector<int> valV;
 		vector< vector<int> > valVV;
@@ -144,6 +144,7 @@ namespace Gen {
 	map< int, Variable > variableMap; // for all, glo / stk / ptr
 	map< int, ValueType > valueTypeMap; // get value type by its id (fetched from Variable)
 	map< int, int > stkOffsetMap; // for stk and ptr
+	set< int > intPtrSet; // for all ptr
 
 	string loadAddress(const Value &v, const string &reg) {
 		switch (v.type) {
@@ -183,6 +184,12 @@ namespace Gen {
 				return "lw " + reg + ", " + to_string(stkOffsetMap[v.id]) + "($sp)";
 		}
 		return "";
+	}
+
+	void loadLVal(const Value &v, const string &reg) {
+		program.emplace_back(loadValue(v, reg));
+		if (v.type == Ptr && intPtrSet.count(v.id) > 0)
+			program.emplace_back("lw " + reg + ", (" + reg + ")");
 	}
 
 	string storeOnStack(int offset, const string &reg) {
@@ -368,7 +375,7 @@ namespace Gen {
 							if (ggg->_type == InitVal) for (auto g4 : ggg->sub) { // a
 									if (g4->_type == InitVal) for (auto g5 : g4->sub) { // i
 											Value vv = GenExp((GExp *) g5, loc, s, ctx);
-											program.push_back(loadValue(vv, "$t0"));
+											loadLVal(vv, "$t0");
 											program.push_back(storeOnStack(offset + 4 * (i * dim2 + j), "$t0"));
 											++j;
 										}
@@ -382,7 +389,7 @@ namespace Gen {
 					if (gg->_type == InitVal) for (auto ggg : gg->sub) { // a
 							if (ggg->_type == InitVal) for (auto g4 : ggg->sub) { // i
 									Value vv = GenExp((GExp *) g4, loc, s, ctx);
-									program.push_back(loadValue(vv, "$t0"));
+									loadLVal(vv, "$t0");
 									program.push_back(storeOnStack(offset + 4 * i, "$t0"));
 									++i;
 								}
@@ -392,7 +399,7 @@ namespace Gen {
 				for (auto gg : g->sub) {
 					if (gg->_type == InitVal) for (auto ggg : gg->sub) { // i
 							Value vv = GenExp((GExp *) ggg, loc, s, ctx);
-							program.push_back(loadValue(vv, "$t0"));
+							loadLVal(vv, "$t0");
 							program.push_back(storeOnStack(offset, "$t0"));
 						}
 				}
@@ -566,7 +573,8 @@ namespace Gen {
 							}
 						} else if (str[i] == '%') {
 							if (str[i + 1] == 'd') {
-								loadValue(exps[fmtCount], "$t0");
+								++i;
+								loadLVal(exps[fmtCount], "$t0");
 								syscall_putint("$t0");
 								++fmtCount;
 							}
@@ -578,7 +586,7 @@ namespace Gen {
 					int l1 = newLabel(), l2 = newLabel();
 					emitLabel(l1);
 					Value v = GenCond(g->sub[2], loc, s, ctx);
-					program.emplace_back(loadValue(v, "$t0"));
+					loadLVal(v, "$t0");
 					program.emplace_back("beqz $t0, l_" + to_string(l2));
 					Context cc = ctx;
 					cc.continueLabel = {Label, l1};
@@ -598,14 +606,14 @@ namespace Gen {
 					if (g->sub.size() <= 5) {
 						int l1 = newLabel();
 						Value v = GenCond(g->sub[2], loc, s, ctx);
-						program.emplace_back(loadValue(v, "$t0"));
+						loadLVal(v, "$t0");
 						program.emplace_back("beqz $t0, l_" + to_string(l1));
 						GenStmt(g->sub[4], loc, s, ctx);
 						emitLabel(l1);
 					} else {
 						int l1 = newLabel(), l2 = newLabel();
 						Value v = GenCond(g->sub[2], loc, s, ctx);
-						program.emplace_back(loadValue(v, "$t0"));
+						loadLVal(v, "$t0");
 						program.emplace_back("beqz $t0, l_" + to_string(l1));
 						GenStmt(g->sub[4], loc, s, ctx);
 						program.emplace_back("j l_" + to_string(l2));
@@ -621,7 +629,7 @@ namespace Gen {
 					if (g->sub[1]->_type != Exp) {
 						program.emplace_back("jr $ra");
 					} else {
-						program.push_back(loadValue(GenExp((GExp *) g->sub[1], loc, s, ctx), "$v0"));
+						loadLVal(GenExp((GExp *) g->sub[1], loc, s, ctx), "$v0");
 						program.emplace_back("jr $ra");
 					}
 					break;
@@ -632,7 +640,7 @@ namespace Gen {
 			}
 		} else if (g->sub[0]->_type == LVal) {
 			Value lv = GenLVal(g->sub[0], loc, s, ctx);
-			if (g->sub[0]->_type > 4) {
+			if ((int) g->sub.size() > 4) {
 				syscall_getint();
 				program.emplace_back(loadValue(lv, "$t0"));
 				program.emplace_back("sw $v0, ($t0)");
@@ -675,6 +683,7 @@ namespace Gen {
 			int id = newVar(), offset = s.alloc(4);
 			valueTypeMap[id] = Ptr;
 			stkOffsetMap[id] = offset;
+			if (v.type == Int) intPtrSet.insert(id);
 			program.push_back(loadAddress({valueTypeMap[v.id], v.id}, "$t0"));
 			program.push_back("sw $t0, " + to_string(offset) + "($sp)");
 			return {Ptr, id};
@@ -684,11 +693,12 @@ namespace Gen {
 				int id = newVar(), offset = s.alloc(4);
 				valueTypeMap[id] = Ptr;
 				stkOffsetMap[id] = offset;
+				intPtrSet.insert(id);
 				program.push_back(loadAddress({valueTypeMap[v.id], v.id}, "$t0"));
-				program.push_back(loadValue(exps[0], "$t1"));
+				loadLVal(exps[0], "$t1");
 				program.push_back("mul $t1, $t1, " + to_string(v.dim2 * 4));
 				program.emplace_back("addu $t0, $t0, $t1");
-				program.push_back(loadValue(exps[1], "$t1"));
+				loadLVal(exps[1], "$t1");
 				program.emplace_back("sll $t1, $t1, 2");
 				program.emplace_back("addu $t0, $t0, $t1");
 				program.push_back("sw $t0, " + to_string(offset) + "($sp)");
@@ -698,7 +708,7 @@ namespace Gen {
 				valueTypeMap[id] = Ptr;
 				stkOffsetMap[id] = offset;
 				program.push_back(loadAddress({valueTypeMap[v.id], v.id}, "$t0"));
-				program.push_back(loadValue(exps[0], "$t1"));
+				loadLVal(exps[0], "$t1");
 				program.push_back("mul $t1, $t1, " + to_string(v.dim2 * 4));
 				program.emplace_back("addu $t0, $t0, $t1");
 				program.push_back("sw $t0, " + to_string(offset) + "($sp)");
@@ -708,8 +718,9 @@ namespace Gen {
 			int id = newVar(), offset = s.alloc(4);
 			valueTypeMap[id] = Ptr;
 			stkOffsetMap[id] = offset;
+			intPtrSet.insert(id);
 			program.push_back(loadAddress({valueTypeMap[v.id], v.id}, "$t0"));
-			program.push_back(loadValue(exps[0], "$t1"));
+			loadLVal(exps[0], "$t1");
 			program.emplace_back("sll $t1, $t1, 2");
 			program.emplace_back("addu $t0, $t0, $t1");
 			program.push_back("sw $t0, " + to_string(offset) + "($sp)");
@@ -719,7 +730,9 @@ namespace Gen {
 
 	Value GenPrimaryExp(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx) {
 		if (g->sub.size() == 1) {
-			if (g->sub[0]->_type == LVal) return GenLVal(g->sub[0], loc, s, ctx);
+			if (g->sub[0]->_type == LVal) {
+				return GenLVal(g->sub[0], loc, s, ctx);
+			}
 			else return GenNumber(g->sub[0], loc, s, ctx);
 		} else {
 			return GenExp(g->sub[1], loc, s, ctx);
@@ -752,19 +765,22 @@ namespace Gen {
 				}
 			}
 			// we have all the params here
-			program.emplace_back("addiu $sp, $sp, -%d"); // minus the stack, make the hole
+			program.emplace_back("addiu $fp, $sp, -%d"); // minus the stack, make the hole
 			fillStackSizeTask.emplace_back((int) program.size() - 1, s.func); // set fill task
 			// saving registers!
-			program.emplace_back("sw $ra, ($sp)");
+			program.emplace_back("sw $ra, ($fp)");
 			// we can pass params now ^_^
 			int i = 0;
 			for (const auto &v : exps) {
 				Type ty = called.pars[i];
 				++i;
-				program.emplace_back(loadValue(v, "$t0")); // check by value or by ref
-				if (ty == Int) program.emplace_back("lw $t0, ($t0)"); // pass by value
-				program.push_back("sw $t0, " + to_string(-4 * i) + "($sp)");
+				loadLVal(v, "$t0");
+				// check by value or by ref = = no need now
+//				if (ty == Int) program.emplace_back("lw $t0, ($t0)"); // pass by value
+				program.push_back("sw $t0, " + to_string(-4 * i) + "($fp)");
 			}
+			// change stack
+			program.emplace_back("move $sp, $fp");
 			// et voila! now we can call the func
 			program.push_back("jal f_" + called.name);
 			// restoring them
@@ -776,13 +792,14 @@ namespace Gen {
 			return {Stk, id};
 		} else {
 			const Value &v = GenUnaryExp(g->sub[1], loc, s, ctx);
-			if (get<1>(((GLexeme *) g->sub[0])->t) == MINU) {
+			TokenType op = get<1>(((GLexeme *) g->sub[0])->t);
+			if (op != PLUS) {
 				int id = newVar(), offset = s.alloc(4);
 				valueTypeMap[id] = Stk;
 				stkOffsetMap[id] = offset;
 				tempVarSet.insert(id);
-				program.push_back(loadValue(v, "$t0"));
-				program.emplace_back("negu $t0, $t0");
+				loadLVal(v, "$t0");
+				program.emplace_back(op == MINU ? "negu $t0, $t0" : "xori $t0, $t0, 1");
 				program.push_back(storeOnStack(offset, "$t0"));
 				return {Stk, id};
 			}
@@ -810,11 +827,11 @@ namespace Gen {
 				// this will be the sub exp
 				Value v2 = GenUnaryExp(g->sub[i], loc, s, ctx);
 				if (i == 0) {
-					program.emplace_back(loadValue(v2, "$t0"));
+					loadLVal(v2, "$t0");
 					program.emplace_back(storeOnStack(offset, "$t0"));
 				} else {
-					program.emplace_back(loadValue(v, "$t0"));
-					program.emplace_back(loadValue(v2, "$t1"));
+					loadLVal(v, "$t0");
+					loadLVal(v2, "$t1");
 					TokenType tty = get<1>(((GLexeme *) g->sub[i - 1])->t);
 					if (tty == MULT) program.emplace_back("mul $t0, $t0, $t1");
 					else if (tty == DIV) program.emplace_back("div $t0, $t0, $t1");
@@ -837,11 +854,11 @@ namespace Gen {
 			for (int i = 0; i < (int) g->sub.size(); i += 2) {
 				Value v2 = GenMulExp(g->sub[i], loc, s, ctx);
 				if (i == 0) {
-					program.emplace_back(loadValue(v2, "$t0"));
+					loadLVal(v2, "$t0");
 					program.emplace_back(storeOnStack(offset, "$t0"));
 				} else {
-					program.emplace_back(loadValue(v, "$t0"));
-					program.emplace_back(loadValue(v2, "$t1"));
+					loadLVal(v, "$t0");
+					loadLVal(v2, "$t1");
 					TokenType tty = get<1>(((GLexeme *) g->sub[i - 1])->t);
 					if (tty == PLUS) program.emplace_back("addu $t0, $t0, $t1");
 					else program.emplace_back("subu $t0, $t0, $t1");
@@ -863,11 +880,11 @@ namespace Gen {
 			for (int i = 0; i < (int) g->sub.size(); i += 2) {
 				Value v2 = GenAddExp(g->sub[i], loc, s, ctx);
 				if (i == 0) {
-					program.emplace_back(loadValue(v2, "$t0"));
+					loadLVal(v2, "$t0");
 					program.emplace_back(storeOnStack(offset, "$t0"));
 				} else {
-					program.emplace_back(loadValue(v, "$t0"));
-					program.emplace_back(loadValue(v2, "$t1"));
+					loadLVal(v, "$t0");
+					loadLVal(v2, "$t1");
 					TokenType tty = get<1>(((GLexeme *) g->sub[i - 1])->t);
 					if (tty == LSS) program.emplace_back("slt $t0, $t0, $t1");
 					else if (tty == GRE) program.emplace_back("sgt $t0, $t0, $t1");
@@ -891,11 +908,11 @@ namespace Gen {
 			for (int i = 0; i < (int) g->sub.size(); i += 2) {
 				Value v2 = GenRelExp(g->sub[i], loc, s, ctx);
 				if (i == 0) {
-					program.emplace_back(loadValue(v2, "$t0"));
+					loadLVal(v2, "$t0");
 					program.emplace_back(storeOnStack(offset, "$t0"));
 				} else {
-					program.emplace_back(loadValue(v, "$t0"));
-					program.emplace_back(loadValue(v2, "$t1"));
+					loadLVal(v, "$t0");
+					loadLVal(v2, "$t1");
 					TokenType tty = get<1>(((GLexeme *) g->sub[i - 1])->t);
 					if (tty == EQL) program.emplace_back("seq $t0, $t0, $t1");
 					else program.emplace_back("sne $t0, $t0, $t1");
@@ -917,12 +934,12 @@ namespace Gen {
 			for (int i = 0; i < (int) g->sub.size(); i += 2) {
 				Value v2 = GenEqExp(g->sub[i], loc, s, ctx);
 				if (i == 0) {
-					program.emplace_back(loadValue(v2, "$t0"));
+					loadLVal(v2, "$t0");
 					program.emplace_back(storeOnStack(offset, "$t0"));
 					program.push_back("beqz $t0, l_" + to_string(shortLabel));
 				} else {
-					program.emplace_back(loadValue(v, "$t0"));
-					program.emplace_back(loadValue(v2, "$t1"));
+					loadLVal(v, "$t0");
+					loadLVal(v2, "$t1");
 					program.emplace_back("and $t0, $t0, $t1");
 					program.emplace_back(storeOnStack(offset, "$t0"));
 					program.push_back("beqz $t0, l_" + to_string(shortLabel));
@@ -944,12 +961,12 @@ namespace Gen {
 			for (int i = 0; i < (int) g->sub.size(); i += 2) {
 				Value v2 = GenLAndExp(g->sub[i], loc, s, ctx);
 				if (i == 0) {
-					program.emplace_back(loadValue(v2, "$t0"));
+					loadLVal(v2, "$t0");
 					program.emplace_back(storeOnStack(offset, "$t0"));
 					program.push_back("bnez $t0, l_" + to_string(shortLabel));
 				} else {
-					program.emplace_back(loadValue(v, "$t0"));
-					program.emplace_back(loadValue(v2, "$t1"));
+					loadLVal(v, "$t0");
+					loadLVal(v2, "$t1");
 					program.emplace_back("or $t0, $t0, $t1");
 					program.emplace_back(storeOnStack(offset, "$t0"));
 					program.push_back("bnez $t0, l_" + to_string(shortLabel));
