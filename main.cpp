@@ -483,6 +483,7 @@ namespace Gen {
 				GenBlock((GBlock *) gg, newLoc, s, ctx);
 			}
 		}
+		program.emplace_back("jr $ra");
 		clearBlock(newLoc);
 		return {None, 0};
 	}
