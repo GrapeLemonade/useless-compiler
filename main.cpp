@@ -810,7 +810,7 @@ namespace Gen {
 				stkOffsetMap[id] = offset;
 				tempVarSet.insert(id);
 				loadLVal(v, "$t0");
-				program.emplace_back(op == MINU ? "negu $t0, $t0" : "seq $t0, $t0, $0");
+				program.emplace_back(op == MINU ? "negu $t0, $t0" : "sltiu $t0, $t0, 1");
 				program.push_back(storeOnStack(offset, "$t0"));
 				return {Stk, id};
 			}
@@ -946,11 +946,13 @@ namespace Gen {
 				Value v2 = GenEqExp(g->sub[i], loc, s, ctx);
 				if (i == 0) {
 					loadLVal(v2, "$t0");
+					program.emplace_back("sne $t0, $t0, $0");
 					program.emplace_back(storeOnStack(offset, "$t0"));
 					program.push_back("beqz $t0, l_" + to_string(shortLabel));
 				} else {
 					loadLVal(v, "$t0");
 					loadLVal(v2, "$t1");
+					program.emplace_back("sne $t1, $t1, $0");
 					program.emplace_back("and $t0, $t0, $t1");
 					program.emplace_back(storeOnStack(offset, "$t0"));
 					program.push_back("beqz $t0, l_" + to_string(shortLabel));
@@ -973,11 +975,13 @@ namespace Gen {
 				Value v2 = GenLAndExp(g->sub[i], loc, s, ctx);
 				if (i == 0) {
 					loadLVal(v2, "$t0");
+					program.emplace_back("sne $t0, $t0, $0");
 					program.emplace_back(storeOnStack(offset, "$t0"));
 					program.push_back("bnez $t0, l_" + to_string(shortLabel));
 				} else {
 					loadLVal(v, "$t0");
 					loadLVal(v2, "$t1");
+					program.emplace_back("sne $t1, $t1, $0");
 					program.emplace_back("or $t0, $t0, $t1");
 					program.emplace_back(storeOnStack(offset, "$t0"));
 					program.push_back("bnez $t0, l_" + to_string(shortLabel));
