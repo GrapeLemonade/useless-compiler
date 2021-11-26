@@ -810,7 +810,7 @@ namespace Gen {
 				stkOffsetMap[id] = offset;
 				tempVarSet.insert(id);
 				loadLVal(v, "$t0");
-				program.emplace_back(op == MINU ? "negu $t0, $t0" : "xori $t0, $t0, 1");
+				program.emplace_back(op == MINU ? "negu $t0, $t0" : "seq $t0, $t0, $0");
 				program.push_back(storeOnStack(offset, "$t0"));
 				return {Stk, id};
 			}
