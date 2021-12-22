@@ -655,11 +655,11 @@ namespace Gen {
 			Value lv = GenLVal(g->sub[0], loc, s, ctx);
 			if ((int) g->sub.size() > 4) {
 				syscall_getint();
-				program.emplace_back(loadValue(lv, "$t0"));
+				program.emplace_back(loadAddress(lv, "$t0"));
 				program.emplace_back("sw $v0, ($t0)");
 			} else {
 				Value exp = GenExp(g->sub[2], loc, s, ctx);
-				program.emplace_back(loadValue(lv, "$t0"));
+				program.emplace_back(loadAddress(lv, "$t0"));
 				loadLVal(exp, "$t1");
 				program.emplace_back("sw $t1, ($t0)");
 			}
@@ -680,6 +680,7 @@ namespace Gen {
 	}
 
 	// LVal will return a ptr, you just need to [load / store] it in place
+	//
 	Value GenLVal(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx) {
 		int dimCount = (int) count_if(g->sub.begin(), g->sub.end(), [] (GrammarElement *gg) { return gg->_type == Exp; });
 		const Variable &v = lookupVar(get<2>(((GLexeme *) g->sub[0])->t));
@@ -690,17 +691,17 @@ namespace Gen {
 			}
 		}
 		if (dimCount == 0) {
-//			if (v.type == Int) {
-//				return {valueTypeMap[v.id], v.id};
-//			} else {
-			int id = newVar(), offset = s.alloc(4);
-			valueTypeMap[id] = Ptr;
-			stkOffsetMap[id] = offset;
-			if (v.type == Int) intPtrSet.insert(id);
-			program.push_back(loadAddress({valueTypeMap[v.id], v.id}, "$t0"));
-			program.push_back("sw $t0, " + to_string(offset) + "($sp)");
-			return {Ptr, id};
-//			}
+			if (v.type == Int) {
+				return {valueTypeMap[v.id], v.id};
+			} else {
+				int id = newVar(), offset = s.alloc(4);
+				valueTypeMap[id] = Ptr;
+				stkOffsetMap[id] = offset;
+//				if (v.type == Int) intPtrSet.insert(id);
+				program.push_back(loadAddress({valueTypeMap[v.id], v.id}, "$t0"));
+				program.push_back("sw $t0, " + to_string(offset) + "($sp)");
+				return {Ptr, id};
+			}
 		} else if (v.type == IntArrayArray) {
 			if (dimCount == 2) {
 				int id = newVar(), offset = s.alloc(4);
