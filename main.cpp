@@ -208,71 +208,106 @@ namespace Gen {
 	map< int, int > intLiteralMap; // for integer literals
 	set< int > intPtrSet; // for all ptr
 
-	string loadAddress(const Value &v, const string &reg) {
+	// Register Alloc Situation
+	// Value or Address
+	// the records are read-only
+	map< string, pair<int, int> > regContent; // value id | [0 value / address 1]
+	map< pair<int, int>, string > valueReg;
+
+	void clearContent(const string &reg) {
+		if (regContent.find(reg) != regContent.end()) {
+			valueReg.erase(regContent[reg]);
+			regContent.erase(reg);
+		}
+	}
+
+	void insertContent(const string &reg, const pair<int, int> &vp) {
+		clearContent(reg);
+		regContent[reg] = vp;
+		valueReg[vp] = reg;
+	}
+
+	// should be placed before every label and jump
+	void clearContentCache() {
+		regContent.clear();
+		valueReg.clear();
+	}
+
+	void loadAddress(const Value &v, const string &reg) {
+		auto vp = make_pair(v.id, 1);
+		auto it = valueReg.find(vp);
+		if (it != valueReg.end()) {
+			if (it->second != reg) {
+				program.emplace_back("move " + reg + ", " + it->second);
+				insertContent(reg, vp);
+			}
+			return ;
+		}
+		insertContent(reg, vp);
 		switch (v.type) {
 			case None:
 			case IntL:
 				panic("loading address of none or literal");
+				break;
 			case Label:
-				return "la " + reg + ", l_" + to_string(v.id);
+				program.emplace_back("la " + reg + ", l_" + to_string(v.id));
+				break;
 			case Glo:
-				return "la " + reg + ", g_" + to_string(v.id);
+				program.emplace_back("la " + reg + ", g_" + to_string(v.id));
+				break;
 			case Stk:
-				return "addiu " + reg + ", $sp, " + to_string(stkOffsetMap[v.id]);
+				program.emplace_back("addiu " + reg + ", $sp, " + to_string(stkOffsetMap[v.id]));
+				break;
 			case Ptr:
-				return "lw " + reg + ", " + to_string(stkOffsetMap[v.id]) + "($sp)";
+				program.emplace_back("lw " + reg + ", " + to_string(stkOffsetMap[v.id]) + "($sp)");
+				break;
 		}
-		return "";
 	}
 
 	inline void emitLabel(int id) {
+		clearContentCache();
 		program.emplace_back("l_" + to_string(id) + ":");
 	}
 
-	string loadValue(const Value &v, const string &reg) {
+	void loadLVal(const Value &v, const string &reg) {
+		auto vp = make_pair(v.id, v.type == Ptr && intPtrSet.count(v.id) == 0 ? 1 : 0);
+		auto it = valueReg.find(vp);
+		if (it != valueReg.end()) {
+			if (it->second != reg) {
+				program.emplace_back("move " + reg + ", " + it->second);
+				insertContent(reg, vp);
+			}
+			return ;
+		}
+		insertContent(reg, vp);
 		switch (v.type) {
 			case None:
 				panic("loading none type");
+				break;
 			case IntL:
-				return "li " + reg + ", " + to_string(intLiteralMap[v.id]);
+				program.emplace_back("li " + reg + ", " + to_string(intLiteralMap[v.id]));
+				break;
 			case Label:
-				return "la " + reg + ", l_" + to_string(v.id);
+				program.emplace_back("la " + reg + ", l_" + to_string(v.id));
+				break;
 			case Glo:
-				return "lw " + reg + ", g_" + to_string(v.id);
+				program.emplace_back("lw " + reg + ", g_" + to_string(v.id));
+				break;
 			case Stk:
 				if (tempVarSet.count(v.id) > 0 || variableMap.find(v.id)->second.type == Int)
-					return "lw " + reg + ", " + to_string(stkOffsetMap[v.id]) + "($sp)";
-				else return "addiu " + reg + ", $sp, " + to_string(stkOffsetMap[v.id]);
+					program.emplace_back("lw " + reg + ", " + to_string(stkOffsetMap[v.id]) + "($sp)");
+				else program.emplace_back("addiu " + reg + ", $sp, " + to_string(stkOffsetMap[v.id]));
+				break;
 			case Ptr:
-				return "lw " + reg + ", " + to_string(stkOffsetMap[v.id]) + "($sp)";
+				program.emplace_back("lw " + reg + ", " + to_string(stkOffsetMap[v.id]) + "($sp)");
+				if (intPtrSet.count(v.id) > 0) program.emplace_back("lw " + reg + ", (" + reg + ")");
+				break;
 		}
-		return "";
-	}
-
-	void loadLVal(const Value &v, const string &reg) {
-		program.emplace_back(loadValue(v, reg));
-		if (v.type == Ptr && intPtrSet.count(v.id) > 0)
-			program.emplace_back("lw " + reg + ", (" + reg + ")");
 	}
 
 	string storeOnStack(int offset, const string &reg) {
 		return "sw " + reg + ", " + to_string(offset) + "($sp)";
 	}
-
-//	string storeValue(const Value &v, const string &reg) {
-//		switch (v.type) {
-//			case None:
-////			case Str:
-//			case Label:
-//				panic("store to non-var");
-//			case Ptr:
-//				panic("store to ptr");
-//			case Glo:
-//				return "sw " + reg + ", g_" + to_string(v.id);
-//			case Stk:
-//				return "lw " + reg + ", " + to_string(stkOffsetMap[v.id]) + "($sp)";
-//		}
-//	}
 
 	void syscall_putchar(char i) {
 		program.push_back("li $a0, " + to_string(i));
@@ -546,6 +581,7 @@ namespace Gen {
 				GenBlock((GBlock *) gg, newLoc, s, ctx);
 			}
 		}
+		clearContentCache();
 		program.emplace_back("jr $ra");
 		clearBlock(newLoc);
 		return {None, 0};
@@ -661,19 +697,23 @@ namespace Gen {
 					emitLabel(l1);
 					Value v = GenCond(g->sub[2], loc, s, ctx);
 					loadLVal(v, "$t0");
+					clearContentCache();
 					program.emplace_back("beqz $t0, l_" + to_string(l2));
 					Context cc = ctx;
 					cc.continueLabel = {Label, l1};
 					cc.breakLabel = {Label, l2};
 					GenStmt(g->sub[4], loc, s, cc);
+					clearContentCache();
 					program.emplace_back("j l_" + to_string(l1));
 					emitLabel(l2);
 					break;
 				}
 				case BREAKTK:
+					clearContentCache();
 					program.push_back("j l_" + to_string(ctx.breakLabel.id));
 					break;
 				case CONTINUETK:
+					clearContentCache();
 					program.push_back("j l_" + to_string(ctx.continueLabel.id));
 					break;
 				case IFTK: {
@@ -681,6 +721,7 @@ namespace Gen {
 						int l1 = newLabel();
 						Value v = GenCond(g->sub[2], loc, s, ctx);
 						loadLVal(v, "$t0");
+						clearContentCache();
 						program.emplace_back("beqz $t0, l_" + to_string(l1));
 						GenStmt(g->sub[4], loc, s, ctx);
 						emitLabel(l1);
@@ -688,8 +729,10 @@ namespace Gen {
 						int l1 = newLabel(), l2 = newLabel();
 						Value v = GenCond(g->sub[2], loc, s, ctx);
 						loadLVal(v, "$t0");
+						clearContentCache();
 						program.emplace_back("beqz $t0, l_" + to_string(l1));
 						GenStmt(g->sub[4], loc, s, ctx);
+						clearContentCache();
 						program.emplace_back("j l_" + to_string(l2));
 						emitLabel(l1);
 						GenStmt(g->sub[6], loc, s, ctx);
@@ -701,9 +744,11 @@ namespace Gen {
 					break;
 				case RETURNTK: {
 					if (g->sub[1]->_type != Exp) {
+						clearContentCache();
 						program.emplace_back("jr $ra");
 					} else {
 						loadLVal(GenExp((GExp *) g->sub[1], loc, s, ctx), "$v0");
+						clearContentCache();
 						program.emplace_back("jr $ra");
 					}
 					break;
@@ -716,11 +761,11 @@ namespace Gen {
 			Value lv = GenLVal(g->sub[0], loc, s, ctx);
 			if ((int) g->sub.size() > 4) {
 				syscall_getint();
-				program.emplace_back(loadAddress(lv, "$t0"));
+				loadAddress(lv, "$t0");
 				program.emplace_back("sw $v0, ($t0)");
 			} else {
 				Value exp = GenExp(g->sub[2], loc, s, ctx);
-				program.emplace_back(loadAddress(lv, "$t0"));
+				loadAddress(lv, "$t0");
 				loadLVal(exp, "$t1");
 				program.emplace_back("sw $t1, ($t0)");
 			}
@@ -759,7 +804,7 @@ namespace Gen {
 				valueTypeMap[id] = Ptr;
 				stkOffsetMap[id] = offset;
 //				if (v.type == Int) intPtrSet.insert(id);
-				program.push_back(loadAddress({valueTypeMap[v.id], v.id}, "$t0"));
+				loadAddress({valueTypeMap[v.id], v.id}, "$t0");
 				program.push_back("sw $t0, " + to_string(offset) + "($sp)");
 				return {Ptr, id};
 			}
@@ -769,12 +814,16 @@ namespace Gen {
 				valueTypeMap[id] = Ptr;
 				stkOffsetMap[id] = offset;
 				intPtrSet.insert(id);
-				program.push_back(loadAddress({valueTypeMap[v.id], v.id}, "$t0"));
+				loadAddress({valueTypeMap[v.id], v.id}, "$t0");
 				loadLVal(exps[0], "$t1");
+				clearContent("$t1");
 				program.push_back("mul $t1, $t1, " + to_string(v.dim2 * 4));
+				clearContent("$t0");
 				program.emplace_back("addu $t0, $t0, $t1");
 				loadLVal(exps[1], "$t1");
+				clearContent("$t1");
 				program.emplace_back("sll $t1, $t1, 2");
+				insertContent("$t0", make_pair(id, 1));
 				program.emplace_back("addu $t0, $t0, $t1");
 				program.push_back("sw $t0, " + to_string(offset) + "($sp)");
 				return {Ptr, id};
@@ -782,9 +831,11 @@ namespace Gen {
 				int id = newVar(), offset = s.alloc(4);
 				valueTypeMap[id] = Ptr;
 				stkOffsetMap[id] = offset;
-				program.push_back(loadAddress({valueTypeMap[v.id], v.id}, "$t0"));
+				loadAddress({valueTypeMap[v.id], v.id}, "$t0");
 				loadLVal(exps[0], "$t1");
+				clearContent("$t1");
 				program.push_back("mul $t1, $t1, " + to_string(v.dim2 * 4));
+				insertContent("$t0", make_pair(id, 1));
 				program.emplace_back("addu $t0, $t0, $t1");
 				program.push_back("sw $t0, " + to_string(offset) + "($sp)");
 				return {Ptr, id};
@@ -794,9 +845,11 @@ namespace Gen {
 			valueTypeMap[id] = Ptr;
 			stkOffsetMap[id] = offset;
 			intPtrSet.insert(id);
-			program.push_back(loadAddress({valueTypeMap[v.id], v.id}, "$t0"));
+			loadAddress({valueTypeMap[v.id], v.id}, "$t0");
 			loadLVal(exps[0], "$t1");
+			clearContent("$t1");
 			program.emplace_back("sll $t1, $t1, 2");
+			insertContent("$t0", make_pair(id, 1));
 			program.emplace_back("addu $t0, $t0, $t1");
 			program.push_back("sw $t0, " + to_string(offset) + "($sp)");
 			return {Ptr, id};
@@ -860,6 +913,7 @@ namespace Gen {
 			// change stack
 			program.emplace_back("move $sp, $fp");
 			// et voila! now we can call the func
+			clearContentCache();
 			program.push_back("jal f_" + called.name);
 			// restoring them
 			program.emplace_back("lw $ra, ($sp)");
@@ -883,6 +937,7 @@ namespace Gen {
 				stkOffsetMap[id] = offset;
 				tempVarSet.insert(id);
 				loadLVal(v, "$t0");
+				insertContent("$t0", make_pair(id, 0));
 				program.emplace_back(op == MINU ? "negu $t0, $t0" : "sltiu $t0, $t0, 1");
 				program.push_back(storeOnStack(offset, "$t0"));
 				return {Stk, id};
@@ -911,6 +966,7 @@ namespace Gen {
 				} else {
 					TokenType tty = get<1>(((GLexeme *) g->sub[i * 2 - 1])->t);
 					if (tty == MULT || v2.type != IntL) loadLVal(v2, "$t1");
+					clearContent("$t0");
 					if (tty == MULT) program.emplace_back("mul $t0, $t0, $t1");
 					else if (tty == DIV) {
 						if (v2.type == IntL) OptDefine::divByConstant(program, "$t0", intLiteralMap[v2.id]);
@@ -944,6 +1000,7 @@ namespace Gen {
 				} else {
 					loadLVal(v2, "$t1");
 					TokenType tty = get<1>(((GLexeme *) g->sub[i * 2 - 1])->t);
+					clearContent("$t0");
 					if (tty == PLUS) program.emplace_back("addu $t0, $t0, $t1");
 					else program.emplace_back("subu $t0, $t0, $t1");
 				}
@@ -953,6 +1010,7 @@ namespace Gen {
 			stkOffsetMap[id] = offset;
 			tempVarSet.insert(id);
 			Value v = {Stk, id};
+			insertContent("$t0", make_pair(id, 0));
 			program.emplace_back(storeOnStack(offset, "$t0"));
 			return v;
 		}
@@ -970,6 +1028,7 @@ namespace Gen {
 				} else {
 					loadLVal(v2, "$t1");
 					TokenType tty = get<1>(((GLexeme *) g->sub[i * 2 - 1])->t);
+					clearContent("$t0");
 					if (tty == LSS) program.emplace_back("slt $t0, $t0, $t1");
 					else if (tty == GRE) program.emplace_back("sgt $t0, $t0, $t1");
 					else if (tty == LEQ) program.emplace_back("sle $t0, $t0, $t1");
@@ -981,6 +1040,7 @@ namespace Gen {
 			stkOffsetMap[id] = offset;
 			tempVarSet.insert(id);
 			Value v = {Stk, id};
+			insertContent("$t0", make_pair(id, 0));
 			program.emplace_back(storeOnStack(offset, "$t0"));
 			return v;
 		}
@@ -998,6 +1058,7 @@ namespace Gen {
 				} else {
 					loadLVal(v2, "$t1");
 					TokenType tty = get<1>(((GLexeme *) g->sub[i * 2 - 1])->t);
+					clearContent("$t0");
 					if (tty == EQL) program.emplace_back("seq $t0, $t0, $t1");
 					else program.emplace_back("sne $t0, $t0, $t1");
 				}
@@ -1007,6 +1068,7 @@ namespace Gen {
 			stkOffsetMap[id] = offset;
 			tempVarSet.insert(id);
 			Value v = {Stk, id};
+			insertContent("$t0", make_pair(id, 0));
 			program.emplace_back(storeOnStack(offset, "$t0"));
 			return v;
 		}
@@ -1024,15 +1086,20 @@ namespace Gen {
 				Value v2 = GenEqExp(g->sub[i], loc, s, ctx);
 				if (i == 0) {
 					loadLVal(v2, "$t0");
+					clearContent("$t0");
 					program.emplace_back("sne $t0, $t0, $0");
 					program.emplace_back(storeOnStack(offset, "$t0"));
+					clearContentCache();
 					program.push_back("beqz $t0, l_" + to_string(shortLabel));
 				} else {
 					loadLVal(v, "$t0");
 					loadLVal(v2, "$t1");
+					clearContent("$t1");
 					program.emplace_back("sne $t1, $t1, $0");
+					clearContent("$t0");
 					program.emplace_back("and $t0, $t0, $t1");
 					program.emplace_back(storeOnStack(offset, "$t0"));
+					clearContentCache();
 					program.push_back("beqz $t0, l_" + to_string(shortLabel));
 				}
 			}
@@ -1053,15 +1120,20 @@ namespace Gen {
 				Value v2 = GenLAndExp(g->sub[i], loc, s, ctx);
 				if (i == 0) {
 					loadLVal(v2, "$t0");
+					clearContent("$t0");
 					program.emplace_back("sne $t0, $t0, $0");
 					program.emplace_back(storeOnStack(offset, "$t0"));
+					clearContentCache();
 					program.push_back("bnez $t0, l_" + to_string(shortLabel));
 				} else {
 					loadLVal(v, "$t0");
 					loadLVal(v2, "$t1");
+					clearContent("$t1");
 					program.emplace_back("sne $t1, $t1, $0");
+					clearContent("$t0");
 					program.emplace_back("or $t0, $t0, $t1");
 					program.emplace_back(storeOnStack(offset, "$t0"));
+					clearContentCache();
 					program.push_back("bnez $t0, l_" + to_string(shortLabel));
 				}
 			}
