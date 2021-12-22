@@ -1085,6 +1085,74 @@ namespace Gen {
 		}
 	}
 }
+namespace Opt {
+	using namespace std;
+	using Gen::program;
+	vector<string> ret;
+
+	void OptLoadAfterStore () {
+		ret.clear();
+		swap(ret, program);
+		const string *las = new string("");
+		for (const auto &instr : ret) {
+			if (las->length() > 2 && instr.length() > 2 &&
+				las->substr(2) == instr.substr(2) &&
+				las->substr(0, 2) == "sw" && instr.substr(0, 2) == "lw") {
+				;
+			} else {
+				program.emplace_back(instr);
+			}
+			las = &instr;
+		}
+	}
+
+	void OptRedundantStore() {
+		// sw $t0, -56($sp)
+		// 01234567
+
+		ret.clear();
+		swap(ret, program);
+
+		set<string> loadedVar;
+		for (const auto &instr : ret) {
+			if (instr.length() > 2 && instr.substr(0, 2) == "lw") {
+				loadedVar.insert(instr.substr(8));
+			}
+		}
+
+		bool inCall = false;
+		for (const auto &instr : ret) {
+			if (instr.find("addiu $fp") != string::npos) {
+				inCall = true;
+			} else if (instr.find("jal f_") != string::npos) {
+				inCall = false;
+			}
+			if (!inCall && instr.length() > 2 && instr.substr(0, 2) == "sw" && loadedVar.find(instr.substr(8)) == loadedVar.end()) {
+				;
+			} else program.emplace_back(instr);
+		}
+	}
+
+	void OptDoubleReturn() {
+		ret.clear();
+		swap(ret, program);
+		const string *las = new string("");
+		for (const auto &instr : ret) {
+			if (*las == "jr $ra" && instr == "jr $ra") {
+				;
+			} else {
+				program.emplace_back(instr);
+			}
+			las = &instr;
+		}
+	}
+
+	void Optimize() {
+		OptLoadAfterStore();
+//		OptRedundantStore();
+		OptDoubleReturn();
+	}
+}
 int main() {
 	using namespace std;
 	FILE *fIn = fopen("testfile.txt", "rb");
@@ -1105,6 +1173,8 @@ int main() {
 	}
 
 	Gen::GenCompUnit(Gra::AST);
+
+	Opt::Optimize();
 
 	for (const auto &u : initializer_list<string> {
 		".data"
