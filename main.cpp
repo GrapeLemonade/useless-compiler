@@ -4,7 +4,7 @@ namespace GenDefine {
 	using namespace std;
 
 	enum ValueType {
-		None, Label, Glo, Stk, Ptr // Str
+		None, Label, Glo, Stk, Ptr, IntL // Str
 	};
 
 //	int newStr () {
@@ -144,12 +144,14 @@ namespace Gen {
 	map< int, Variable > variableMap; // for all, glo / stk / ptr
 	map< int, ValueType > valueTypeMap; // get value type by its id (fetched from Variable)
 	map< int, int > stkOffsetMap; // for stk and ptr
+	map< int, int > intLiteralMap; // for integer literals
 	set< int > intPtrSet; // for all ptr
 
 	string loadAddress(const Value &v, const string &reg) {
 		switch (v.type) {
 			case None:
-				panic("loading none type");
+			case IntL:
+				panic("loading address of none or literal");
 			case Label:
 				return "la " + reg + ", l_" + to_string(v.id);
 			case Glo:
@@ -170,8 +172,8 @@ namespace Gen {
 		switch (v.type) {
 			case None:
 				panic("loading none type");
-//			case Str:
-//				return "la " + reg + ", s_" + to_string(v.id);
+			case IntL:
+				return "li " + reg + ", " + to_string(intLiteralMap[v.id]);
 			case Label:
 				return "la " + reg + ", l_" + to_string(v.id);
 			case Glo:
@@ -753,9 +755,12 @@ namespace Gen {
 	Value GenNumber(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx) {
 		int value = stoi(get<2>(((GLexeme *) g->sub[0])->t));
 		int id = newVar();
-		valueTypeMap[id] = Glo;
-		data.push_back("g_" + to_string(id) + ": .word " + to_string(value));
-		return {Glo, id};
+		valueTypeMap[id] = IntL;
+		intLiteralMap[id] = value;
+		return {IntL, id};
+//		valueTypeMap[id] = Glo;
+//		data.push_back("g_" + to_string(id) + ": .word " + to_string(value));
+//		return {Glo, id};
 	}
 
 	Value GenUnaryExp(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx) {
