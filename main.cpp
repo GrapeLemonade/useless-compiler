@@ -17,7 +17,7 @@ namespace GenDefine {
 		return ++ret;
 	}
 
-	int newVar () { // glo, stk, ptr
+	int newVar () { // glo, stk, ptr, intl
 		static int ret = 0;
 		return ++ret;
 	}
@@ -811,6 +811,12 @@ namespace Gen {
 			const Value &v = GenUnaryExp(g->sub[1], loc, s, ctx);
 			TokenType op = get<1>(((GLexeme *) g->sub[0]->sub[0])->t);
 			if (op != PLUS) {
+				if (v.type == IntL) {
+					int _ = newVar(), _v = op == MINU ? -intLiteralMap[v.id] : !intLiteralMap[v.id];
+					valueTypeMap[_] = IntL;
+					intLiteralMap[_] = _v;
+					return {IntL, _};
+				}
 				int id = newVar(), offset = s.alloc(4);
 				valueTypeMap[id] = Stk;
 				stkOffsetMap[id] = offset;
@@ -835,27 +841,26 @@ namespace Gen {
 	Value GenMulExp(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx) {
 		if (g->sub.size() == 1) return GenUnaryExp(g->sub[0], loc, s, ctx);
 		else {
+			vector<Value> vs;
+			for (int i = 0; i < (int) g->sub.size(); i += 2) vs.emplace_back(GenUnaryExp(g->sub[i], loc, s, ctx));
+			for (int i = 0; i < (int) vs.size(); ++i) {
+				const Value &v2 = vs[i];
+				if (i == 0) {
+					loadLVal(v2, "$t0");
+				} else {
+					loadLVal(v2, "$t1");
+					TokenType tty = get<1>(((GLexeme *) g->sub[i * 2 - 1])->t);
+					if (tty == MULT) program.emplace_back("mul $t0, $t0, $t1");
+					else if (tty == DIV) program.emplace_back("div $t0, $t0, $t1");
+					else program.emplace_back("rem $t0, $t0, $t1");
+				}
+			}
 			int id = newVar(), offset = s.alloc(4);
 			valueTypeMap[id] = Stk;
 			stkOffsetMap[id] = offset;
 			tempVarSet.insert(id);
 			Value v = {Stk, id};
-			for (int i = 0; i < (int) g->sub.size(); i += 2) {
-				// this will be the sub exp
-				Value v2 = GenUnaryExp(g->sub[i], loc, s, ctx);
-				if (i == 0) {
-					loadLVal(v2, "$t0");
-					program.emplace_back(storeOnStack(offset, "$t0"));
-				} else {
-					loadLVal(v, "$t0");
-					loadLVal(v2, "$t1");
-					TokenType tty = get<1>(((GLexeme *) g->sub[i - 1])->t);
-					if (tty == MULT) program.emplace_back("mul $t0, $t0, $t1");
-					else if (tty == DIV) program.emplace_back("div $t0, $t0, $t1");
-					else program.emplace_back("rem $t0, $t0, $t1");
-					program.emplace_back(storeOnStack(offset, "$t0"));
-				}
-			}
+			program.emplace_back(storeOnStack(offset, "$t0"));
 			return v;
 		}
 	}
@@ -863,25 +868,25 @@ namespace Gen {
 	Value GenAddExp(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx) {
 		if (g->sub.size() == 1) return GenMulExp(g->sub[0], loc, s, ctx);
 		else {
+			vector<Value> vs;
+			for (int i = 0; i < (int) g->sub.size(); i += 2) vs.emplace_back(GenMulExp(g->sub[i], loc, s, ctx));
+			for (int i = 0; i < (int) vs.size(); ++i) {
+				const Value &v2 = vs[i];
+				if (i == 0) {
+					loadLVal(v2, "$t0");
+				} else {
+					loadLVal(v2, "$t1");
+					TokenType tty = get<1>(((GLexeme *) g->sub[i * 2 - 1])->t);
+					if (tty == PLUS) program.emplace_back("addu $t0, $t0, $t1");
+					else program.emplace_back("subu $t0, $t0, $t1");
+				}
+			}
 			int id = newVar(), offset = s.alloc(4);
 			valueTypeMap[id] = Stk;
 			stkOffsetMap[id] = offset;
 			tempVarSet.insert(id);
 			Value v = {Stk, id};
-			for (int i = 0; i < (int) g->sub.size(); i += 2) {
-				Value v2 = GenMulExp(g->sub[i], loc, s, ctx);
-				if (i == 0) {
-					loadLVal(v2, "$t0");
-					program.emplace_back(storeOnStack(offset, "$t0"));
-				} else {
-					loadLVal(v, "$t0");
-					loadLVal(v2, "$t1");
-					TokenType tty = get<1>(((GLexeme *) g->sub[i - 1])->t);
-					if (tty == PLUS) program.emplace_back("addu $t0, $t0, $t1");
-					else program.emplace_back("subu $t0, $t0, $t1");
-					program.emplace_back(storeOnStack(offset, "$t0"));
-				}
-			}
+			program.emplace_back(storeOnStack(offset, "$t0"));
 			return v;
 		}
 	}
@@ -889,27 +894,27 @@ namespace Gen {
 	Value GenRelExp(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx) {
 		if (g->sub.size() == 1) return GenAddExp(g->sub[0], loc, s, ctx);
 		else {
+			vector<Value> vs;
+			for (int i = 0; i < (int) g->sub.size(); i += 2) vs.emplace_back(GenAddExp(g->sub[i], loc, s, ctx));
+			for (int i = 0; i < (int) vs.size(); ++i) {
+				const Value &v2 = vs[i];
+				if (i == 0) {
+					loadLVal(v2, "$t0");
+				} else {
+					loadLVal(v2, "$t1");
+					TokenType tty = get<1>(((GLexeme *) g->sub[i * 2 - 1])->t);
+					if (tty == LSS) program.emplace_back("slt $t0, $t0, $t1");
+					else if (tty == GRE) program.emplace_back("sgt $t0, $t0, $t1");
+					else if (tty == LEQ) program.emplace_back("sle $t0, $t0, $t1");
+					else program.emplace_back("sge $t0, $t0, $t1");
+				}
+			}
 			int id = newVar(), offset = s.alloc(4);
 			valueTypeMap[id] = Stk;
 			stkOffsetMap[id] = offset;
 			tempVarSet.insert(id);
 			Value v = {Stk, id};
-			for (int i = 0; i < (int) g->sub.size(); i += 2) {
-				Value v2 = GenAddExp(g->sub[i], loc, s, ctx);
-				if (i == 0) {
-					loadLVal(v2, "$t0");
-					program.emplace_back(storeOnStack(offset, "$t0"));
-				} else {
-					loadLVal(v, "$t0");
-					loadLVal(v2, "$t1");
-					TokenType tty = get<1>(((GLexeme *) g->sub[i - 1])->t);
-					if (tty == LSS) program.emplace_back("slt $t0, $t0, $t1");
-					else if (tty == GRE) program.emplace_back("sgt $t0, $t0, $t1");
-					else if (tty == LEQ) program.emplace_back("sle $t0, $t0, $t1");
-					else program.emplace_back("sge $t0, $t0, $t1");
-					program.emplace_back(storeOnStack(offset, "$t0"));
-				}
-			}
+			program.emplace_back(storeOnStack(offset, "$t0"));
 			return v;
 		}
 	}
@@ -917,25 +922,25 @@ namespace Gen {
 	Value GenEqExp(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx) {
 		if (g->sub.size() == 1) return GenRelExp(g->sub[0], loc, s, ctx);
 		else {
+			vector<Value> vs;
+			for (int i = 0; i < (int) g->sub.size(); i += 2) vs.emplace_back(GenRelExp(g->sub[i], loc, s, ctx));
+			for (int i = 0; i < (int) vs.size(); ++i) {
+				const Value &v2 = vs[i];
+				if (i == 0) {
+					loadLVal(v2, "$t0");
+				} else {
+					loadLVal(v2, "$t1");
+					TokenType tty = get<1>(((GLexeme *) g->sub[i * 2 - 1])->t);
+					if (tty == EQL) program.emplace_back("seq $t0, $t0, $t1");
+					else program.emplace_back("sne $t0, $t0, $t1");
+				}
+			}
 			int id = newVar(), offset = s.alloc(4);
 			valueTypeMap[id] = Stk;
 			stkOffsetMap[id] = offset;
 			tempVarSet.insert(id);
 			Value v = {Stk, id};
-			for (int i = 0; i < (int) g->sub.size(); i += 2) {
-				Value v2 = GenRelExp(g->sub[i], loc, s, ctx);
-				if (i == 0) {
-					loadLVal(v2, "$t0");
-					program.emplace_back(storeOnStack(offset, "$t0"));
-				} else {
-					loadLVal(v, "$t0");
-					loadLVal(v2, "$t1");
-					TokenType tty = get<1>(((GLexeme *) g->sub[i - 1])->t);
-					if (tty == EQL) program.emplace_back("seq $t0, $t0, $t1");
-					else program.emplace_back("sne $t0, $t0, $t1");
-					program.emplace_back(storeOnStack(offset, "$t0"));
-				}
-			}
+			program.emplace_back(storeOnStack(offset, "$t0"));
 			return v;
 		}
 	}
