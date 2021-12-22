@@ -78,6 +78,67 @@ namespace GenDefine {
 		Value continueLabel = {Label, 0};
 	};
 }
+namespace OptDefine {
+	using namespace std;
+	using namespace ErrDefine;
+
+	using udword = unsigned long long;
+	using uword = unsigned int;
+
+	const int N = 32;
+	udword m;
+	int l, sh_post;
+
+	void chooseMultiplier(uword d, int prec) {
+		uword t_d = d;
+		while (__builtin_popcount(t_d) > 1) t_d += t_d & (-t_d);
+		l = sh_post = __builtin_ctz(t_d);
+		udword m_low = (((udword) 1) << N) + ((((udword) 1) << (N + l)) - (((udword) 1) << N) * d) / d;
+		udword m_high = (((udword) 1) << N) + ((((udword) 1) << (N + l)) + (((udword) 1) << (N + l - prec)) - (((udword) 1) << N) * d) / d;
+		if (m_low >= m_high || m_low < 0 || m_high < 0) panic("implementation error");
+		while (m_low / 2 < m_high / 2 && sh_post > 0) {
+			m_low >>= 1;
+			m_high >>= 1;
+			--sh_post;
+		}
+		m = m_high;
+	}
+
+	void divByConstant (vector<string> &program, const string &reg, int d) {
+		uword absD = abs(d);
+		chooseMultiplier(absD, N - 1);
+		if (absD == 1) ;
+		else if (absD == 1u << l) {
+			program.emplace_back("sra $k0, " + reg + ", " + to_string(l - 1));
+			program.emplace_back("srl $k0, $k0, " + to_string(N - l));
+			program.emplace_back("add $k0, $k0, " + reg);
+			program.emplace_back("sra " + reg + ", $k0, " + to_string(l));
+		} else if (m < (((udword) 1) << (N - 1))) {
+			program.emplace_back("li $k0, " + to_string(m));
+			program.emplace_back("mult $k0, " + reg);
+			program.emplace_back("mfhi $k0");
+			program.emplace_back("sra $k0, $k0, " + to_string(sh_post));
+			program.emplace_back("srl " + reg + ", " + reg + ", " + to_string(N - 1));
+			program.emplace_back("add " + reg + ", " + reg + ", $k0");
+		} else {
+			program.emplace_back("li $k0, " + to_string((int) (m - (((udword) 1) << N))));
+			program.emplace_back("mult $k0, " + reg);
+			program.emplace_back("mfhi $k0");
+			program.emplace_back("add $k0, $k0, " + reg);
+			program.emplace_back("sra $k0, $k0, " + to_string(sh_post));
+			program.emplace_back("srl " + reg + ", " + reg + ", " + to_string(N - 1));
+			program.emplace_back("add " + reg + ", " + reg + ", $k0");
+		}
+		if (d < 0) program.emplace_back("negu " + reg + ", " + reg);
+	}
+
+	void remByConstant (vector<string> &program, const string &reg, int d) {
+		program.emplace_back("move $k1, " + reg);
+		divByConstant(program, "$k1", d);
+		program.emplace_back("mul $k1, $k1, " + to_string(d));
+		program.emplace_back("subu " + reg + ", " + reg + ", $k1");
+	}
+}
 namespace Gen {
 	using namespace GenDefine;
 	using namespace ErrDefine;
@@ -848,11 +909,17 @@ namespace Gen {
 				if (i == 0) {
 					loadLVal(v2, "$t0");
 				} else {
-					loadLVal(v2, "$t1");
 					TokenType tty = get<1>(((GLexeme *) g->sub[i * 2 - 1])->t);
+					if (tty == MULT || v2.type != IntL) loadLVal(v2, "$t1");
 					if (tty == MULT) program.emplace_back("mul $t0, $t0, $t1");
-					else if (tty == DIV) program.emplace_back("div $t0, $t0, $t1");
-					else program.emplace_back("rem $t0, $t0, $t1");
+					else if (tty == DIV) {
+						if (v2.type == IntL) OptDefine::divByConstant(program, "$t0", intLiteralMap[v2.id]);
+						else program.emplace_back("div $t0, $t0, $t1");
+					}
+					else {
+						if (v2.type == IntL) OptDefine::remByConstant(program, "$t0", intLiteralMap[v2.id]);
+						else program.emplace_back("rem $t0, $t0, $t1");
+					}
 				}
 			}
 			int id = newVar(), offset = s.alloc(4);
