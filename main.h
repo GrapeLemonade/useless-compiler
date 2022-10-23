@@ -316,7 +316,6 @@ namespace Lex {
 			else ErrDefine::panic((string) "[L] stray char "
 			                      + "0123456789abcdef"[(*p >> 4) & 15]
 			                      + "0123456789abcdef"[*p & 15] + " in program");
-//			printf("%c", *p);
 		}
 		return (int) tokens.size();
 	}

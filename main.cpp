@@ -4,13 +4,8 @@ namespace GenDefine {
 	using namespace std;
 
 	enum ValueType {
-		None, Label, Glo, Stk, Ptr, IntL // Str
+		None, Label, Glo, Stk, Ptr, IntL
 	};
-
-//	int newStr () {
-//		static int ret = 0;
-//		return ++ret;
-//	}
 
 	int newLabel () {
 		static int ret = 0;
@@ -147,17 +142,12 @@ namespace Gen {
 	Value GenCompUnit(GCompUnit *g);
 	Value GenDecl(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx);
 	Value GenConstDecl(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx);
-//	Value GenBType(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx);
 	Value GenConstDef(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx);
-//	Value GenConstInitVal(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx);
 	Value GenVarDecl(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx);
 	Value GenVarDef(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx);
-//	Value GenInitVal(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx);
 	Value GenFuncDef(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx);
 	Value GenMainFuncDef(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx);
-//	Value GenFuncType(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx);
 	Value GenFuncFParams(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx);
-//	Value GenFuncFParam(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx);
 	Value GenBlock(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx);
 	Value GenBlockItem(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx);
 	Value GenStmt(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx);
@@ -167,8 +157,6 @@ namespace Gen {
 	Value GenPrimaryExp(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx);
 	Value GenNumber(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx);
 	Value GenUnaryExp(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx);
-//	Value GenUnaryOp(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx);
-//	Value GenFuncRParams(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx);
 	Value GenMulExp(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx);
 	Value GenAddExp(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx);
 	Value GenRelExp(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx);
@@ -183,7 +171,6 @@ namespace Gen {
 	ConstExpr EvalPrimaryExp(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx);
 	ConstExpr EvalNumber(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx);
 	ConstExpr EvalUnaryExp(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx);
-//	ConstExpr EvalUnaryOp(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx);
 	ConstExpr EvalMulExp(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx);
 	ConstExpr EvalAddExp(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx);
 
@@ -198,7 +185,6 @@ namespace Gen {
 	map< string, stack<Variable> > varTab;
 	map< string, Function > funcMap;
 
-//	map< int, Variable > constVarMap;
 	map< int, Storage > storageMap; // maps var to its compile-time storage, if it is const
 
 	set< int > tempVarSet; // for temporary Int on stack
@@ -377,10 +363,6 @@ namespace Gen {
 		return {None, 0};
 	}
 
-//	Value GenBType(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx) {
-//		return {None, 0};
-//	}
-
 	Value GenConstDef(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx) {
 		const Token &t = ((GLexeme *) g->sub[0])->t;
 		auto dimCount = count_if(g->sub.begin(), g->sub.end(), [] (GrammarElement *p) { return p->_type == ConstExp; });
@@ -436,10 +418,6 @@ namespace Gen {
 		storageMap[id] = sto;
 		return {Glo, id};
 	}
-
-//	Value GenConstInitVal(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx) {
-//		return {None, 0};
-//	}
 
 	Value GenVarDecl(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx) {
 		for (auto gg : g->sub) {
@@ -564,10 +542,6 @@ namespace Gen {
 		}
 	}
 
-//	Value GenInitVal(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx) {
-//		return {None, 0};
-//	}
-
 	Value GenFuncDef(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx) {
 		set<Variable> newLoc;
 		string name = get<2>(((GLexeme *) g->sub[1])->t);
@@ -600,10 +574,6 @@ namespace Gen {
 		return {None, 0};
 	}
 
-//	Value GenFuncType(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx) {
-//		return {None, 0};
-//	}
-
 	Value GenFuncFParams(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx) {
 		int paramCount = (int) count_if(g->sub.begin(), g->sub.end(), [] (GrammarElement *p) {
 			return p->_type == FuncFParam;
@@ -631,10 +601,6 @@ namespace Gen {
 		funcMap[f.name] = f;
 		return {None, 0};
 	}
-
-//	Value GenFuncFParam(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx) {
-//		return {None, 0};
-//	}
 
 	Value GenBlock(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx) {
 		set<Variable> newLoc;
@@ -786,7 +752,7 @@ namespace Gen {
 	}
 
 	// LVal will return a ptr, you just need to [load / store] it in place
-	//
+
 	Value GenLVal(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx) {
 		int dimCount = (int) count_if(g->sub.begin(), g->sub.end(), [] (GrammarElement *gg) { return gg->_type == Exp; });
 		const Variable &v = lookupVar(get<2>(((GLexeme *) g->sub[0])->t));
@@ -803,7 +769,6 @@ namespace Gen {
 				int id = newVar(), offset = s.alloc(4);
 				valueTypeMap[id] = Ptr;
 				stkOffsetMap[id] = offset;
-//				if (v.type == Int) intPtrSet.insert(id);
 				loadAddress({valueTypeMap[v.id], v.id}, "$t0");
 				program.push_back("sw $t0, " + to_string(offset) + "($sp)");
 				return {Ptr, id};
@@ -873,9 +838,6 @@ namespace Gen {
 		valueTypeMap[id] = IntL;
 		intLiteralMap[id] = value;
 		return {IntL, id};
-//		valueTypeMap[id] = Glo;
-//		data.push_back("g_" + to_string(id) + ": .word " + to_string(value));
-//		return {Glo, id};
 	}
 
 	Value GenUnaryExp(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx) {
@@ -945,14 +907,6 @@ namespace Gen {
 			else return v;
 		}
 	}
-
-//	Value GenUnaryOp(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx) {
-//		return {None, 0};
-//	}
-//
-//	Value GenFuncRParams(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx) {
-//		return {None, 0};
-//	}
 
 	Value GenMulExp(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx) {
 		if (g->sub.size() == 1) return GenUnaryExp(g->sub[0], loc, s, ctx);
@@ -1184,10 +1138,6 @@ namespace Gen {
 		}
 	}
 
-//	ConstExpr EvalUnaryOp(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx) {
-//		return 0;
-//	}
-
 	ConstExpr EvalMulExp(GrammarElement *g, set<Variable> &loc, Stack &s, const Context &ctx) {
 		ConstExpr r = 1;
 		TokenType t = MULT;
@@ -1251,33 +1201,6 @@ namespace Opt {
 		}
 	}
 
-	void OptRedundantStore() {
-		// sw $t0, -56($sp)
-		// 01234567
-
-		ret.clear();
-		swap(ret, program);
-
-		set<string> loadedVar;
-		for (const auto &instr : ret) {
-			if (instr.length() > 2 && instr.substr(0, 2) == "lw") {
-				loadedVar.insert(instr.substr(8));
-			}
-		}
-
-		bool inCall = false;
-		for (const auto &instr : ret) {
-			if (instr.find("addiu $fp") != string::npos) {
-				inCall = true;
-			} else if (instr.find("jal f_") != string::npos) {
-				inCall = false;
-			}
-			if (!inCall && instr.length() > 2 && instr.substr(0, 2) == "sw" && loadedVar.find(instr.substr(8)) == loadedVar.end()) {
-				;
-			} else program.emplace_back(instr);
-		}
-	}
-
 	void OptDoubleReturn() {
 		ret.clear();
 		swap(ret, program);
@@ -1294,7 +1217,6 @@ namespace Opt {
 
 	void Optimize() {
 		OptLoadAfterStore();
-//		OptRedundantStore();
 		OptDoubleReturn();
 	}
 }
